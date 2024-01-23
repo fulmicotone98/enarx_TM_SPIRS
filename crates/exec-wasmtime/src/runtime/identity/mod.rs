@@ -11,7 +11,7 @@ use std::str::FromStr;
 
 use std::time::Duration;
 
-use anyhow::{bail, Context};
+use anyhow::{bail, Context, Ok};
 use const_oid::db::rfc5280::{
     ID_CE_BASIC_CONSTRAINTS, ID_CE_EXT_KEY_USAGE, ID_CE_KEY_USAGE, ID_KP_CLIENT_AUTH,
     ID_KP_SERVER_AUTH,
@@ -150,8 +150,27 @@ pub fn steward(url: &Url, csr: impl AsRef<[u8]>) -> anyhow::Result<Vec<Vec<u8>>>
     response.into_reader().read_to_end(&mut body)?;
 
     // Decode the certificate chain.
-    let path = PkiPath::from_der(&body)?;
+    let path: Vec<x509_cert::certificate::CertificateInner> = PkiPath::from_der(&body)?;
     path.iter().rev().map(|c| Ok(c.to_der()?)).collect()
+}
+
+#[instrument(skip(_csr, certs))]
+pub fn trust_monitor(url: &Url, _csr: impl AsRef<[u8]>, certs: Vec<rustls::Certificate>) -> anyhow::Result<String> {
+    if url.scheme() != "https" {
+        bail!("refusing to use an unencrypted steward url");
+    }
+
+    // Send the attestation to the TM.
+    let response = ureq::post(url.as_str())
+        //.set("Content-Type", "application/pkcs10")
+        .send_bytes(certs[0].as_ref())?;
+
+    let status = response.status_text().to_owned();
+
+    let mut body = Vec::new();
+    response.into_reader().read_to_end(&mut body)?;
+
+    Ok(status) 
 }
 
 #[instrument(skip(key))]

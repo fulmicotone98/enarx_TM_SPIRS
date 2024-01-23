@@ -34,19 +34,36 @@ impl Runtime {
         let Workload { webasm, config } = package.try_into()?;
         let Config {
             steward,
+            tm,
             args,
             files,
             env,
         } = config.unwrap_or_default();
 
-        let certs = if let Some(url) = steward {
-            identity::steward(&url, crtreq).context("failed to attest to Steward")?
+        let certs_1 = if let Some(url) = steward {
+            identity::steward(&url, crtreq.clone()).context("failed to attest to Steward")?
         } else {
             identity::selfsigned(&prvkey).context("failed to generate self-signed certificates")?
-        }
-        .into_iter()
-        .map(rustls::Certificate)
-        .collect::<Vec<_>>();
+        };
+
+        let certs = certs_1.clone()
+            .into_iter()
+            .map(rustls::Certificate)
+            .collect::<Vec<_>>();
+
+        /* JC */
+        let certs_tm = certs.clone();
+        
+        //let tm_url = tm.unwrap_or(Err));
+        let _respone_tm = if let Some(tm_url) = tm {
+
+            println!("{}", tm_url.as_str());
+
+            identity::trust_monitor(&tm_url, crtreq.clone(), certs_tm)
+            .context("failed to send cert to the Trust Monitor")?;
+        };
+        //println!("{:?}", respone_tm);
+        /*****/
 
         let mut config = wasmtime::Config::new();
         config.memory_init_cow(false);
