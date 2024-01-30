@@ -119,7 +119,7 @@ pub fn generate() -> anyhow::Result<(Zeroizing<Vec<u8>>, Vec<u8>)> {
     };
 
     let attestation_report = platform.attest(&key_hash).context("failed to attest")?;
-
+    
     // Create extensions.
     let ext = vec![Extension {
         extn_id: platform.technology().into(),
@@ -151,27 +151,30 @@ pub fn steward(url: &Url, csr: impl AsRef<[u8]>) -> anyhow::Result<Vec<Vec<u8>>>
 
     // Decode the certificate chain.
     let path: Vec<x509_cert::certificate::CertificateInner> = PkiPath::from_der(&body)?;
-    path.iter().rev().map(|c| Ok(c.to_der()?)).collect()
+
+    return path.iter().rev().map(|c| Ok(c.to_der()?)).collect();
 }
 
+/* Thesis TM 2.0 Integration - JC */
 #[instrument(skip(_csr, certs))]
 pub fn trust_monitor(url: &Url, _csr: impl AsRef<[u8]>, certs: Vec<rustls::Certificate>) -> anyhow::Result<String> {
-    if url.scheme() != "https" {
-        bail!("refusing to use an unencrypted steward url");
-    }
+    // if url.scheme() != "https" {
+    //     bail!("refusing to use an unencrypted steward url");
+    // }
 
-    // Send the attestation to the TM.
+    // Send the certificate to the TM.
     let response = ureq::post(url.as_str())
-        //.set("Content-Type", "application/pkcs10")
         .send_bytes(certs[0].as_ref())?;
 
-    let status = response.status_text().to_owned();
+    println!("\nTEST\n");
 
-    let mut body = Vec::new();
-    response.into_reader().read_to_end(&mut body)?;
+    let _status_code = response.status().to_string();
+    let status_text = response.status_text().to_owned();
 
-    Ok(status) 
+
+    Ok(status_text) 
 }
+/**********************************/
 
 #[instrument(skip(key))]
 pub fn selfsigned(key: impl AsRef<[u8]>) -> anyhow::Result<Vec<Vec<u8>>> {

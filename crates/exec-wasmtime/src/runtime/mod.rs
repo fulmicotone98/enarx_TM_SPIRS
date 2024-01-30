@@ -51,18 +51,17 @@ impl Runtime {
             .map(rustls::Certificate)
             .collect::<Vec<_>>();
 
-        /* JC */
+        /* Thesis TM 2.0 Integration - JC */
         let certs_tm = certs.clone();
         
-        //let tm_url = tm.unwrap_or(Err));
-        let _respone_tm = if let Some(tm_url) = tm {
+        let tm_url = tm.expect("TM URL must be defined inside Enarx.toml");
 
-            println!("{}", tm_url.as_str());
+        println!("{}", tm_url.as_str());
 
-            identity::trust_monitor(&tm_url, crtreq.clone(), certs_tm)
+        let response_tm = identity::trust_monitor(&tm_url, crtreq.clone(), certs_tm)
             .context("failed to send cert to the Trust Monitor")?;
-        };
-        //println!("{:?}", respone_tm);
+        
+        println!("{}", response_tm);
         /*****/
 
         let mut config = wasmtime::Config::new();
