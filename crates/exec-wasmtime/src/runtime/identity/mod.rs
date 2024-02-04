@@ -2,7 +2,7 @@
 
 //! Functionality for establishing keep identity.
 
-mod pki;
+pub(crate) mod pki;
 mod platform;
 
 use pki::PrivateKeyInfoExt;
@@ -156,21 +156,17 @@ pub fn steward(url: &Url, csr: impl AsRef<[u8]>) -> anyhow::Result<Vec<Vec<u8>>>
 }
 
 /* Thesis TM 2.0 Integration - JC */
-#[instrument(skip(_csr, certs))]
-pub fn trust_monitor(url: &Url, _csr: impl AsRef<[u8]>, certs: Vec<rustls::Certificate>) -> anyhow::Result<String> {
-    // if url.scheme() != "https" {
-    //     bail!("refusing to use an unencrypted steward url");
-    // }
+#[instrument(skip(agg_data))]
+pub fn trust_monitor(url: &Url, agg_data: impl AsRef<[u8]>) -> anyhow::Result<String> {
 
-    // Send the certificate to the TM.
+    // Send to the TM the certificate chain previously retrieved from the Steward
     let response = ureq::post(url.as_str())
-        .send_bytes(certs[0].as_ref())?;
+        .send_bytes(agg_data.as_ref())?;
 
     println!("\nTEST\n");
 
     let _status_code = response.status().to_string();
     let status_text = response.status_text().to_owned();
-
 
     Ok(status_text) 
 }

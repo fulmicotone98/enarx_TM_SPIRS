@@ -6,6 +6,8 @@ mod identity;
 mod io;
 mod net;
 
+use crate::runtime::identity::pki::PrivateKeyInfoExt;
+
 use self::io::null::Null;
 use self::io::stdio_file;
 use self::net::{connect_file, listen_file};
@@ -14,6 +16,9 @@ use super::{Package, Workload};
 
 use anyhow::Context;
 use enarx_config::{Config, File};
+use pkcs8::der::Decode;
+use pkcs8::PrivateKeyInfo;
+use sha2::{Sha256, Digest};
 use wasi_common::file::FileCaps;
 use wasi_common::WasiFile;
 use wasmtime::{AsContextMut, Engine, Linker, Module, Store, Val};
@@ -40,29 +45,42 @@ impl Runtime {
             env,
         } = config.unwrap_or_default();
 
-        let certs_1 = if let Some(url) = steward {
+        let cert_chain = if let Some(url) = steward {
             identity::steward(&url, crtreq.clone()).context("failed to attest to Steward")?
         } else {
             identity::selfsigned(&prvkey).context("failed to generate self-signed certificates")?
         };
 
-        let certs = certs_1.clone()
+        let certs = cert_chain.clone()
             .into_iter()
             .map(rustls::Certificate)
             .collect::<Vec<_>>();
 
         /* Thesis TM 2.0 Integration - JC */
-        let certs_tm = certs.clone();
-        
-        let tm_url = tm.expect("TM URL must be defined inside Enarx.toml");
 
+        let tm_url = tm.expect("TM URL must be defined inside Enarx.toml");
         println!("{}", tm_url.as_str());
 
-        let response_tm = identity::trust_monitor(&tm_url, crtreq.clone(), certs_tm)
-            .context("failed to send cert to the Trust Monitor")?;
+        let pki = PrivateKeyInfo::from_der(&prvkey)
+            .context("failed to parse DER-encoded private key before sign the wasm")?;
+
+        let sign_algo = pki.signs_with()?;
+
+        let hash = Sha256::digest(&webasm);
+        
+        let signed_hash_wasm = pki.sign(&hash, sign_algo)
+            .context("failed to sign the hash of the wasm file")?;
+
+        let mut agg_data = Vec::new();
+        agg_data.extend_from_slice(&cert_chain.concat());
+        agg_data.extend_from_slice(&signed_hash_wasm);
+
+        let response_tm = identity::trust_monitor(&tm_url, agg_data)
+            .context("failed to send cert and signed hash of wasm to the Trust Monitor")?;
         
         println!("{}", response_tm);
-        /*****/
+
+        /**********************************/
 
         let mut config = wasmtime::Config::new();
         config.memory_init_cow(false);
@@ -77,6 +95,8 @@ impl Runtime {
 
         let mut wstore = trace_span!("initialize Wasmtime store")
             .in_scope(|| Store::new(&engine, WasiCtxBuilder::new().build()));
+
+        /* */
 
         let module = trace_span!("compile Wasm")
             .in_scope(|| Module::from_binary(&engine, &webasm))
