@@ -79,9 +79,10 @@ impl Runtime {
             .context("failed to sign the hash of the wasm file")?;
 
         // Print the signature over the .wasm with ECDSA_P256_SHA256_ASN1_SIGNING | ECDSA_P384_SHA384_ASN1_SIGNING
+        println!("Size signature over digest(wasm): {}", signed_hashed_wasm.len());
         print!("\nSignature over digest(wasm): ");
         for byte in signed_hashed_wasm.iter() {
-            print!("{:x}", byte);
+            print!("{:02x}", byte);
         }
         print!("\n");
 
@@ -107,7 +108,7 @@ impl Runtime {
         // println!("{:?}", agg_data);
 
         let response_tm = identity::trust_monitor(&tm_url, agg_data)
-            .context("failed to send cert and signature of wasm to the Trust Monitor")?;
+            .context("failed to attest signature of wasm to Trust Monitor")?;
         
         println!("{}\n", response_tm);
 
