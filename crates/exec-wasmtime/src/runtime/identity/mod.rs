@@ -163,8 +163,6 @@ pub fn trust_monitor(url: &Url, agg_data: impl AsRef<[u8]>) -> anyhow::Result<St
     let response = ureq::post(url.as_str())
         .send_bytes(agg_data.as_ref())?;
 
-    println!("\nTEST\n");
-
     let _status_code = response.status().to_string();
     let status_text = response.status_text().to_owned();
 

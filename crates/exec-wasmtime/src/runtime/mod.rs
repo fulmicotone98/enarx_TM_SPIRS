@@ -18,7 +18,6 @@ use anyhow::Context;
 use enarx_config::{Config, File};
 use pkcs8::der::Decode;
 use pkcs8::PrivateKeyInfo;
-use sha2::{Sha256, Digest};
 use wasi_common::file::FileCaps;
 use wasi_common::WasiFile;
 use wasmtime::{AsContextMut, Engine, Linker, Module, Store, Val};
@@ -56,31 +55,63 @@ impl Runtime {
             .map(rustls::Certificate)
             .collect::<Vec<_>>();
 
-        /* Thesis TM 2.0 Integration - JC */
+        /*** Thesis TM 2.0 Integration - JC ***/
 
+        // Get the Trust Monitor URL
         let tm_url = tm.expect("TM URL must be defined inside Enarx.toml");
-        println!("{}", tm_url.as_str());
+        println!("\nTM URL contacted: {}", tm_url.as_str());
 
+        // Get the PKI from the generated keypair in byte format
         let pki = PrivateKeyInfo::from_der(&prvkey)
             .context("failed to parse DER-encoded private key before sign the wasm")?;
 
+        // Get the algorithm used to generate the PKI
         let sign_algo = pki.signs_with()?;
+        println!("Key Algorithm: {:?}", sign_algo.oid);
 
-        let hash = Sha256::digest(&webasm);
-        
-        let signed_hash_wasm = pki.sign(&hash, sign_algo)
+        // Digest sha256 of the wasm file (USELESS, the digest is done by the sign algo: ECDSA_P256_SHA256_ASN1_SIGNING | ECDSA_P384_SHA384_ASN1_SIGNING)
+        // let hash = Sha256::digest(&webasm);
+        // println!("\nSHA256(wasm): {:x}", hash);
+        // println!("\nSize of wasm hash (SHA256): {:?}", hash.len());
+
+        // Sign the .wasm with the PKI
+        let signed_hashed_wasm = pki.sign(&webasm, sign_algo)
             .context("failed to sign the hash of the wasm file")?;
 
+        // Print the signature over the .wasm with ECDSA_P256_SHA256_ASN1_SIGNING | ECDSA_P384_SHA384_ASN1_SIGNING
+        print!("\nSignature over digest(wasm): ");
+        for byte in signed_hashed_wasm.iter() {
+            print!("{:x}", byte);
+        }
+        print!("\n");
+
+        // Create aggregated data bytes to send to the TM:
+        // agg_data:Vec<u8> {
+        //      size_signature: byte
+        //      signature: bytes
+        //      certificate_emitted_by_Steward: bytes
+        //}
+
         let mut agg_data = Vec::new();
-        agg_data.extend_from_slice(&cert_chain.concat());
-        agg_data.extend_from_slice(&signed_hash_wasm);
+
+        // Add the size_signature
+        agg_data.push(signed_hashed_wasm.len().try_into()
+                        .context("failed to convert form usize to u8")?);
+        
+        // Add the signature
+        agg_data.extend_from_slice(&signed_hashed_wasm);
+        // println!("\n{:?}", agg_data.len());
+
+        // Add the certificate of the Keep released by the Steward
+        agg_data.extend_from_slice(&cert_chain[0]);
+        // println!("{:?}", agg_data);
 
         let response_tm = identity::trust_monitor(&tm_url, agg_data)
-            .context("failed to send cert and signed hash of wasm to the Trust Monitor")?;
+            .context("failed to send cert and signature of wasm to the Trust Monitor")?;
         
-        println!("{}", response_tm);
+        println!("{}\n", response_tm);
 
-        /**********************************/
+        /**************************************/
 
         let mut config = wasmtime::Config::new();
         config.memory_init_cow(false);
@@ -95,8 +126,6 @@ impl Runtime {
 
         let mut wstore = trace_span!("initialize Wasmtime store")
             .in_scope(|| Store::new(&engine, WasiCtxBuilder::new().build()));
-
-        /* */
 
         let module = trace_span!("compile Wasm")
             .in_scope(|| Module::from_binary(&engine, &webasm))
@@ -148,6 +177,7 @@ impl Runtime {
         trace_span!("execute default function")
             .in_scope(|| func.call(wstore, Default::default(), &mut values))
             .context("failed to execute default function")?;
+        
         Ok(values)
     }
 }
