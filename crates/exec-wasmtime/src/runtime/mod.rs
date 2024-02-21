@@ -55,7 +55,7 @@ impl Runtime {
             .map(rustls::Certificate)
             .collect::<Vec<_>>();
 
-        /*** Thesis TM 2.0 Integration - JC ***/
+        /*** Thesis TM Integration - JC ***/
 
         // Get the Trust Monitor URL
         let tm_url = tm.expect("TM URL must be defined inside Enarx.toml");
@@ -67,7 +67,7 @@ impl Runtime {
 
         // Get the algorithm used to generate the PKI
         let sign_algo = pki.signs_with()?;
-        println!("Key Algorithm: {:?}", sign_algo.oid);
+        // println!("Key Algorithm: {:?}", sign_algo.oid);
 
         // Digest sha256 of the wasm file (USELESS, the digest is done by the sign algo: ECDSA_P256_SHA256_ASN1_SIGNING | ECDSA_P384_SHA384_ASN1_SIGNING)
         // let hash = Sha256::digest(&webasm);
@@ -79,8 +79,8 @@ impl Runtime {
             .context("failed to sign the hash of the wasm file")?;
 
         // Print the signature over the .wasm with ECDSA_P256_SHA256_ASN1_SIGNING | ECDSA_P384_SHA384_ASN1_SIGNING
-        println!("Size signature over digest(wasm): {}", signed_hashed_wasm.len());
-        print!("\nSignature over digest(wasm): ");
+        println!("Size signature on digest(wasm): {}", signed_hashed_wasm.len());
+        print!("\nSignature on digest(wasm): ");
         for byte in signed_hashed_wasm.iter() {
             print!("{:02x}", byte);
         }
