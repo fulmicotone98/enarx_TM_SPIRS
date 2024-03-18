@@ -7,6 +7,7 @@ mod io;
 mod net;
 
 use crate::runtime::identity::pki::PrivateKeyInfoExt;
+use crate::runtime::identity::platform::{Platform, Technology};
 
 use self::io::null::Null;
 use self::io::stdio_file;
@@ -18,6 +19,8 @@ use anyhow::Context;
 use enarx_config::{Config, File};
 use pkcs8::der::Decode;
 use pkcs8::PrivateKeyInfo;
+use sha2::digest::generic_array::GenericArray;
+use sha2::{Digest, Sha256, Sha384};
 use wasi_common::file::FileCaps;
 use wasi_common::WasiFile;
 use wasmtime::{AsContextMut, Engine, Linker, Module, Store, Val};
@@ -69,10 +72,22 @@ impl Runtime {
         let sign_algo = pki.signs_with()?;
         // println!("Key Algorithm: {:?}", sign_algo.oid);
 
-        // Digest sha256 of the wasm file (USELESS, the digest is done by the sign algo: ECDSA_P256_SHA256_ASN1_SIGNING | ECDSA_P384_SHA384_ASN1_SIGNING)
-        // let hash = Sha256::digest(&webasm);
-        // println!("\nSHA256(wasm): {:x}", hash);
-        // println!("\nSize of wasm hash (SHA256): {:?}", hash.len());
+        // Digest sha256 of the wasm file (USELESS, the digest is done by the sign algo:
+        // ECDSA_P256_SHA256_ASN1_SIGNING | ECDSA_P384_SHA384_ASN1_SIGNING)
+        let platform = Platform::get().context("failed to query platform")?;
+
+        let mut hash_256 = GenericArray::default();
+        let mut hash_384 = GenericArray::default();
+        match platform.technology() {
+            Technology::Snp => {
+                hash_384 = Sha384::digest(&webasm);
+                println!("SHA384(wasm): {:x}", hash_384);
+            }
+            _ => {
+                hash_256 = Sha256::digest(&webasm);
+                println!("SHA256(wasm): {:x}", hash_256);
+            }
+        };
 
         // Sign the .wasm with the PKI
         let signed_hashed_wasm = pki.sign(&webasm, sign_algo)
@@ -88,16 +103,38 @@ impl Runtime {
 
         // Create aggregated data bytes to send to the TM:
         // agg_data:Vec<u8> {
+        //      hash_dimension: byte
         //      size_signature: byte
+        //      hash_of_wasm: bytes
         //      signature: bytes
         //      certificate_emitted_by_Steward: bytes
         //}
 
         let mut agg_data = Vec::new();
 
+        //Add the hash dimension
+        match platform.technology() {
+            Technology::Snp => {
+                agg_data.push(48);
+            }
+            _ => {
+                agg_data.push(32);
+            }
+        };
+
         // Add the size_signature
         agg_data.push(signed_hashed_wasm.len().try_into()
                         .context("failed to convert form usize to u8")?);
+
+        //Add the hash of the wasm
+        match platform.technology() {
+            Technology::Snp => {
+                agg_data.extend_from_slice(&hash_384);
+            }
+            _ => {
+                agg_data.extend_from_slice(&hash_256);
+            }
+        };
         
         // Add the signature
         agg_data.extend_from_slice(&signed_hashed_wasm);

@@ -3,7 +3,7 @@
 //! Functionality for establishing keep identity.
 
 pub(crate) mod pki;
-mod platform;
+pub(crate) mod platform;
 
 use pki::PrivateKeyInfoExt;
 use platform::{Platform, Technology};
