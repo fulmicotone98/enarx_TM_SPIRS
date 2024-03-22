@@ -72,8 +72,7 @@ impl Runtime {
         let sign_algo = pki.signs_with()?;
         // println!("Key Algorithm: {:?}", sign_algo.oid);
 
-        // Digest sha256 of the wasm file (USELESS, the digest is done by the sign algo:
-        // ECDSA_P256_SHA256_ASN1_SIGNING | ECDSA_P384_SHA384_ASN1_SIGNING)
+        // Digest sha256 of the wasm file
         let platform = Platform::get().context("failed to query platform")?;
 
         let mut hash_256 = GenericArray::default();
